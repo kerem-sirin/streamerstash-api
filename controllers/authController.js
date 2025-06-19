@@ -1,6 +1,9 @@
 ﻿import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { validationResult } from 'express-validator';
+import { ddbDocClient } from '../config/db.js'; // Import our DynamoDB client
+import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb'; // Import DynamoDB commands
+import crypto from 'crypto'; // Import the built-in crypto module for UUIDs
 
 export const registerUser = async (req, res) => {
     const errors = validationResult(req);
@@ -11,27 +14,46 @@ export const registerUser = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        // Convert the salt rounds from a string in .env to a number
-        const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS);
-        if (isNaN(saltRounds)) {
-            throw new Error('BCRYPT_SALT_ROUNDS is not a number');
+        // 1. Check if user with that email already exists
+        const getParams = {
+            TableName: "Users",
+            Key: {
+                email: email,
+            },
+        };
+
+        const { Item } = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (Item) {
+            return res.status(400).json({ msg: 'User already exists' });
         }
 
-        // Hash the password
+        // 2. Hash the password
+        const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS);
         const salt = await bcrypt.genSalt(saltRounds);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const user = {
-            id: Date.now(),
+        // 3. Create the new user object with a unique ID
+        const newUser = {
+            id: crypto.randomUUID(), // Generate a true unique ID
             email: email,
             password: hashedPassword,
+            createdAt: new Date().toISOString(),
         };
 
-        console.log("User created (in memory):", user);
+        // 4. Save the new user to the DynamoDB table
+        const putParams = {
+            TableName: "Users",
+            Item: newUser,
+        };
 
+        await ddbDocClient.send(new PutCommand(putParams));
+        console.log("User successfully saved to DynamoDB:", newUser.email);
+
+        // 5. Create and return JWT
         const payload = {
             user: {
-                id: user.id,
+                id: newUser.id,
             },
         };
 
@@ -45,8 +67,7 @@ export const registerUser = async (req, res) => {
             }
         );
     } catch (err) {
-        // Log the specific error message to the console
-        console.error("Error in registerUser:", err.message);
+        console.error("Error in registerUser:", err);
         res.status(500).send('Server Error');
     }
 };

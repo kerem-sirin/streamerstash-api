@@ -71,3 +71,58 @@ export const registerUser = async (req, res) => {
         res.status(500).send('Server Error');
     }
 };
+
+// The new login function
+export const loginUser = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({errors: errors.array()});
+    }
+
+    const {email, password} = req.body;
+
+    try {
+        // 1. Check if user exists
+        const getParams = {
+            TableName: "Users",
+            Key: {
+                email: email,
+            },
+        };
+
+        const {Item} = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (!Item) {
+            // Important: Use a generic error message for security
+            return res.status(400).json({msg: 'Invalid Credentials'});
+        }
+
+        // 2. Compare the provided password with the stored hashed password
+        const isMatch = await bcrypt.compare(password, Item.password);
+
+        if (!isMatch) {
+            return res.status(400).json({msg: 'Invalid Credentials'});
+        }
+
+        // 3. User is valid, create and return a new JWT
+        const payload = {
+            user: {
+                id: Item.id, // Use the user's ID from the database
+            },
+        };
+
+        jwt.sign(
+            payload,
+            process.env.JWT_SECRET,
+            {expiresIn: process.env.JWT_EXPIRES_IN},
+            (err, token) => {
+                if (err) throw err;
+                res.json({token});
+            }
+        );
+
+    } catch (err) {
+        console.error("Error in loginUser:", err);
+        res.status(500).send('Server Error');
+    }
+};

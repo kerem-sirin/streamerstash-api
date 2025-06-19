@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import { body } from 'express-validator';
-import { registerUser } from '../controllers/authController.js';
+import { registerUser, loginUser } from '../controllers/authController.js';
 
 const router = Router();
 
@@ -18,6 +18,18 @@ router.post(
         ).isLength({ min: 6 }),
     ],
     registerUser
+);
+
+// @route   POST api/auth/login
+// @desc    Authenticate user & get token
+// @access  Public
+router.post(
+    '/login',
+    [
+        body('email', 'Please include a valid email').isEmail(),
+        body('password', 'Password is required').exists(),
+    ],
+    loginUser
 );
 
 export default router;

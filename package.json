@@ -1,13 +1,24 @@
 {
-  "dependencies": {
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.10"
-  },
+  "name": "streamerstash-api",
+  "version": "1.0.0",
+  "description": "The official backend API for StreamerStash.com...",
+  "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "Kerem Sirin",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

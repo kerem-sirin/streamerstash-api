@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import { authMiddleware, authorize } from '../middleware/authMiddleware.js';
-import { createProduct, getProducts, getProductById } from '../controllers/productController.js';
+import { createProduct, getProducts, getProductById, updateProduct, deleteProduct } from '../controllers/productController.js';
 
 const router = Router();
 
@@ -22,5 +22,15 @@ router.get('/', getProducts);
 // @desc    Get a single product by ID
 // @access  Public
 router.get('/:id', getProductById);
+
+// @route   PUT /api/products/:id
+// @desc    Update a product
+// @access  Private (permission logic is in the controller)
+router.put('/:id', authMiddleware, updateProduct);
+
+// @route   DELETE /api/products/:id
+// @desc    Delete a product
+// @access  Private (permission logic is in the controller)
+router.delete('/:id', authMiddleware, deleteProduct);
 
 export default router;

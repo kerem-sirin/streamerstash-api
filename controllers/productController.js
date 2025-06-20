@@ -1,4 +1,4 @@
-﻿import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb'; // Add ScanCommand and GetCommand
+﻿import { PutCommand, ScanCommand, GetCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'; // Add ScanCommand and GetCommand
 import { ddbDocClient } from '../config/db.js';
 import crypto from 'crypto';
 
@@ -145,6 +145,123 @@ export const getProductById = async (req, res) => {
 
     } catch (err) {
         console.error("Error fetching product by ID:", err);
+        res.status(500).send('Server Error');
+    }
+};
+
+// @desc    Update a product
+// @route   PUT /api/products/:id
+// @access  Private (Owner or Admin)
+export const updateProduct = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const user = req.user; // User object from authMiddleware
+        const { name, description, price, category, tags } = req.body;
+
+        // 1. Fetch the product to check for existence and ownership
+        const getParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+        };
+        const { Item: product } = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (!product) {
+            return res.status(404).json({ msg: 'Product not found' });
+        }
+
+        // 2. Check permissions: User must be the product's artist or an admin
+        const hasPermission = product.artistId === user.id || user.roles.includes('admin');
+        if (!hasPermission) {
+            return res.status(403).json({ msg: 'Forbidden: You do not have permission to update this product' });
+        }
+
+        // 3. Build the update expression for DynamoDB dynamically
+        const updateExpressionParts = [];
+        const expressionAttributeNames = {};
+        const expressionAttributeValues = {};
+
+        // Helper function to add updates if the value exists in the request
+        const addUpdate = (key, value, attributeName, attributeValue) => {
+            if (value !== undefined) {
+                updateExpressionParts.push(`${key} = ${attributeValue}`);
+                expressionAttributeNames[key] = attributeName;
+                expressionAttributeValues[attributeValue] = value;
+            }
+        };
+
+        addUpdate('#n', name, 'name', ':n');
+        addUpdate('#d', description, 'description', ':d');
+        addUpdate('#p', price, 'price', ':p');
+        addUpdate('#c', category, 'category', ':c');
+        addUpdate('#t', tags, 'tags', ':t');
+
+        // Always update the 'updatedAt' timestamp
+        updateExpressionParts.push('#ua = :ua');
+        expressionAttributeNames['#ua'] = 'updatedAt';
+        expressionAttributeValues[':ua'] = new Date().toISOString();
+
+        // If no fields were provided to update, return an error.
+        if (updateExpressionParts.length <= 1) {
+            return res.status(400).json({ msg: 'No valid fields provided for update' });
+        }
+
+        const updateParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+            UpdateExpression: `SET ${updateExpressionParts.join(', ')}`,
+            ExpressionAttributeNames: expressionAttributeNames,
+            ExpressionAttributeValues: expressionAttributeValues,
+            ReturnValues: 'ALL_NEW', // Return the item as it appears after the update
+        };
+
+        const { Attributes: updatedProduct } = await ddbDocClient.send(new UpdateCommand(updateParams));
+
+        res.json(updatedProduct);
+
+    } catch (err) {
+        console.error("Error updating product:", err);
+        res.status(500).send('Server Error');
+    }
+};
+
+/// @desc    Delete a product
+// @route   DELETE /api/products/:id
+// @access  Private (Owner or Admin)
+export const deleteProduct = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const user = req.user;
+
+        // 1. Fetch the product to check for existence and ownership
+        const getParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+        };
+        const { Item: product } = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (!product) {
+            return res.status(404).json({ msg: 'Product not found' });
+        }
+
+        // 2. Check permissions
+        const hasPermission = product.artistId === user.id || user.roles.includes('admin');
+        if (!hasPermission) {
+            return res.status(403).json({ msg: 'Forbidden: You do not have permission to delete this product' });
+        }
+
+        // 3. Delete the product
+        const deleteParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+        };
+        await ddbDocClient.send(new DeleteCommand(deleteParams));
+
+        // Note: In a real app, you would also delete the associated files from S3 here.
+
+        res.json({ msg: 'Product removed successfully' });
+
+    } catch (err) {
+        console.error("Error deleting product:", err);
         res.status(500).send('Server Error');
     }
 };

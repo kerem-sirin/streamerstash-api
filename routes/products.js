@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import { authMiddleware, authorize } from '../middleware/authMiddleware.js';
-import { createProduct, getProducts, getProductById, updateProduct, deleteProduct } from '../controllers/productController.js';
+import { createProduct, getProducts, getProductById, updateProduct, deleteProduct, linkAssetToProduct, addPreviewImage } from '../controllers/productController.js';
 
 const router = Router();
 
@@ -32,5 +32,15 @@ router.put('/:id', authMiddleware, updateProduct);
 // @desc    Delete a product
 // @access  Private (permission logic is in the controller)
 router.delete('/:id', authMiddleware, deleteProduct);
+
+// @route   PUT /api/products/:id/asset
+// @desc    Link an S3 asset to a product
+// @access  Private
+router.put('/:id/asset', authMiddleware, linkAssetToProduct);
+
+// @route   POST /api/products/:id/previews
+// @desc    Add a preview image to a product
+// @access  Private
+router.post('/:id/previews', authMiddleware, addPreviewImage);
 
 export default router;

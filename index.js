@@ -2,6 +2,7 @@
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
+import productRoutes from './routes/products.js';
 
 // Initialize dotenv to load environment variables
 dotenv.config();
@@ -20,6 +21,7 @@ app.get("/", (req, res) => {
 // Tell the app to use the auth routes for any URL starting with /api/auth
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/products', productRoutes);
 
 app.listen(port, () => {
     console.log(`Server is running on port: ${port}`);

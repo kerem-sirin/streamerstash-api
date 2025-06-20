@@ -1,12 +1,16 @@
 ﻿import { Router } from 'express';
 import { body } from 'express-validator';
-import { registerUser, loginUser } from '../controllers/authController.js';
+import { registerUser, loginUser, getMe } from '../controllers/authController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-// @route   POST api/auth/register
-// @desc    Register a new user
-// @access  Public
+/**
+ * @route   POST api/auth/register
+ * @desc    Register a new user
+ * @access  Public
+ * @uses    express-validator - For request body validation.
+ */
 router.post(
     '/register',
     [
@@ -20,9 +24,12 @@ router.post(
     registerUser
 );
 
-// @route   POST api/auth/login
-// @desc    Authenticate user & get token
-// @access  Public
+/**
+ * @route   POST api/auth/login
+ * @desc    Authenticate user & get token
+ * @access  Public
+ * @uses    express-validator - For request body validation.
+ */
 router.post(
     '/login',
     [
@@ -31,5 +38,10 @@ router.post(
     ],
     loginUser
 );
+
+// @route   GET api/auth/me
+// @desc    Get logged-in user's data
+// @access  Private (notice we add the middleware here)
+router.get('/me', authMiddleware, getMe);
 
 export default router;

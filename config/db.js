@@ -1,13 +1,24 @@
 ﻿import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
-// The AWS SDK will automatically look for the region and credentials
-// in ~/.aws/config and ~/.aws/credentials files.
-// We don't need to expose the region here.
+/**
+ * The base DynamoDB client.
+ * The AWS SDK automatically discovers credentials and region from the environment.
+ * An empty configuration object `{}` is passed to use the default configuration chain.
+ * @const {DynamoDBClient}
+ */
 const ddbClient = new DynamoDBClient({});
 
-// Create a DynamoDB Document Client
+/**
+ * The DynamoDB Document Client.
+ * This client simplifies interaction with DynamoDB by abstracting away the low-level
+ * DynamoDB data types and allowing the use of native JavaScript objects.
+ * @const {DynamoDBDocumentClient}
+ */
 const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
-// Export the client for use in other files
+/**
+ * Export the configured DynamoDB Document Client for use in other modules.
+ * @exports ddbDocClient
+ */
 export { ddbDocClient };

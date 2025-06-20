@@ -265,3 +265,104 @@ export const deleteProduct = async (req, res) => {
         res.status(500).send('Server Error');
     }
 };
+
+// @desc    Link an uploaded S3 asset key to a product
+// @route   PUT /api/products/:id/asset
+// @access  Private (Owner or Admin)
+export const linkAssetToProduct = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const user = req.user;
+        const { s3AssetKey } = req.body;
+
+        if (!s3AssetKey) {
+            return res.status(400).json({ msg: 's3AssetKey is required' });
+        }
+
+        // Fetch the product to verify ownership
+        const getParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+        };
+        const { Item: product } = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (!product) {
+            return res.status(404).json({ msg: 'Product not found' });
+        }
+
+        // Check permissions
+        if (product.artistId !== user.id && !user.roles.includes('admin')) {
+            return res.status(403).json({ msg: 'Forbidden: You do not have permission' });
+        }
+
+        // Update the product with the new S3 key
+        const updateParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+            UpdateExpression: 'SET #s3Key = :s3Key, #ua = :ua',
+            ExpressionAttributeNames: {
+                '#s3Key': 's3AssetKey',
+                '#ua': 'updatedAt'
+            },
+            ExpressionAttributeValues: {
+                ':s3Key': s3AssetKey,
+                ':ua': new Date().toISOString()
+            },
+            ReturnValues: 'ALL_NEW',
+        };
+
+        const { Attributes: updatedProduct } = await ddbDocClient.send(new UpdateCommand(updateParams));
+        res.json(updatedProduct);
+
+    } catch (err) {
+        console.error("Error linking asset:", err);
+        res.status(500).send("Server Error");
+    }
+};
+
+// @desc    Add a preview image S3 key to a product's list
+// @route   POST /api/products/:id/previews
+// @access  Private (Owner or Admin)
+export const addPreviewImage = async (req, res) => {
+    try {
+        const productId = req.params.id;
+        const user = req.user;
+        const { previewImageKey } = req.body;
+
+        if (!previewImageKey) {
+            return res.status(400).json({ msg: 'previewImageKey is required' });
+        }
+
+        const getParams = { TableName: 'Products', Key: { id: productId } };
+        const { Item: product } = await ddbDocClient.send(new GetCommand(getParams));
+
+        if (!product) {
+            return res.status(404).json({ msg: 'Product not found' });
+        }
+
+        if (product.artistId !== user.id && !user.roles.includes('admin')) {
+            return res.status(403).json({ msg: 'Forbidden: You do not have permission' });
+        }
+
+        // This expression appends the new key to the previewImageKeys list.
+        // If the list doesn't exist, it creates it first.
+        const updateParams = {
+            TableName: 'Products',
+            Key: { id: productId },
+            UpdateExpression: 'SET #previewKeys = list_append(if_not_exists(#previewKeys, :empty_list), :new_key)',
+            ExpressionAttributeNames: { '#previewKeys': 'previewImageKeys' },
+            ExpressionAttributeValues: {
+                ':new_key': [previewImageKey], // The item to append must be in a list
+                ':empty_list': [],
+            },
+            ReturnValues: 'ALL_NEW',
+        };
+
+        const { Attributes: updatedProduct } = await ddbDocClient.send(new UpdateCommand(updateParams));
+        res.json(updatedProduct);
+
+    } catch (err) {
+        console.error("Error adding preview image:", err);
+        res.status(500).send("Server Error");
+    }
+};

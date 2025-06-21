@@ -87,11 +87,12 @@ To get a local copy up and running, follow these simple steps.
 
 1.  **Clone the repo**
     ```
-    git clone [https://github.com/kerem-sirin/streamerstash-api.git](https://github.com/kerem-sirin/streamerstash-api.git)
+    git clone https://github.com/kerem-sirin/streamerstash-api.git
     ```
 2.  **Change Directory and Install NPM packages**
     ```
     cd streamerstash-api
+    ```
     ```
     npm install
     ```

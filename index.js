@@ -1,5 +1,6 @@
 ﻿import express from 'express';
 import dotenv from 'dotenv';
+import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import productRoutes from './routes/products.js';
@@ -11,8 +12,12 @@ import paymentRoutes from './routes/payments.js';
 // Initialize dotenv to load environment variables
 dotenv.config();
 
+// Create an instance of express
 const app = express();
 const port = process.env.PORT;
+
+// Middleware to handle CORS issues
+app.use(cors());
 
 // IMPORTANT: We need to use express.raw for the webhook route BEFORE express.json()
 // This ensures we get the raw request body needed for Stripe's signature verification.

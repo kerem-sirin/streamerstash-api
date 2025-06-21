@@ -1,5 +1,4 @@
-﻿
-import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+﻿import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '../config/db.js';
 
 // @desc    Get the current user's shopping cart

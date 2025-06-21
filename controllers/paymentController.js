@@ -14,43 +14,31 @@ export const createPaymentIntent = async (req, res) => {
     }
 
     try {
-        // This ensures process.env.STRIPE_SECRET_KEY is loaded before Stripe is initialized.
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-        // 1. Get the order from your database to verify the amount and ownership
         const orderParams = {
             TableName: 'Orders',
-            Key: {
-                id: orderId,
-                userId: userId,
-            },
+            Key: { id: orderId, userId: userId },
         };
         const { Item: order } = await ddbDocClient.send(new GetCommand(orderParams));
 
         if (!order) {
             return res.status(404).json({ msg: 'Order not found or you do not have permission' });
         }
-
         if (order.status !== 'pending_payment') {
             return res.status(400).json({ msg: `Order has already been processed. Status: ${order.status}` });
         }
 
-        // 2. Create a PaymentIntent with the order amount and currency
         const paymentIntent = await stripe.paymentIntents.create({
-            amount: order.totalAmount, // Amount in the smallest currency unit (cents)
-            currency: 'gbp', // Use 'gbp' for British Pounds
-            // In the latest version of the API, you must specify 'automatic_payment_methods'.
-            automatic_payment_methods: {
-                enabled: true,
-            },
-            // Add metadata to link this Stripe payment to your order
+            amount: order.totalAmount,
+            currency: 'gbp',
+            automatic_payment_methods: { enabled: true },
             metadata: {
                 orderId: order.id,
                 userId: userId,
             },
         });
 
-        // 3. (Optional but recommended) Save the paymentIntent.id to your order
         const updateParams = {
             TableName: 'Orders',
             Key: { id: orderId, userId: userId },
@@ -60,8 +48,6 @@ export const createPaymentIntent = async (req, res) => {
         };
         await ddbDocClient.send(new UpdateCommand(updateParams));
 
-        // 4. Send the client secret back to the frontend
-        // The frontend will use this to confirm the payment
         res.send({
             clientSecret: paymentIntent.client_secret,
         });
@@ -70,4 +56,47 @@ export const createPaymentIntent = async (req, res) => {
         console.error("Error creating payment intent:", err);
         res.status(500).send('Server Error');
     }
+};
+
+// @desc    Handle incoming webhook events from Stripe
+// @route   POST /api/payments/webhook
+// @access  Public (but verified by Stripe signature)
+export const handleStripeWebhook = async (req, res) => {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const sig = req.headers['stripe-signature'];
+
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+        console.log(`Webhook signature verification failed.`);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'payment_intent.succeeded') {
+        const paymentIntent = event.data.object;
+        console.log(`PaymentIntent for ${paymentIntent.amount} was successful!`);
+
+        const { orderId, userId } = paymentIntent.metadata;
+
+        try {
+            const updateParams = {
+                TableName: 'Orders',
+                Key: { id: orderId, userId: userId },
+                UpdateExpression: 'SET #status = :status',
+                ExpressionAttributeNames: { '#status': 'status' },
+                ExpressionAttributeValues: { ':status': 'completed' },
+            };
+            await ddbDocClient.send(new UpdateCommand(updateParams));
+            console.log(`Order ${orderId} status updated to completed.`);
+        } catch (dbError) {
+            console.error('Failed to update order status:', dbError);
+        }
+    } else {
+        console.log(`Unhandled event type ${event.type}`);
+    }
+
+    res.json({ received: true });
 };

@@ -6,6 +6,7 @@ import productRoutes from './routes/products.js';
 import uploadRoutes from './routes/uploads.js';
 import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
+import paymentRoutes from './routes/payments.js';
 
 // Initialize dotenv to load environment variables
 dotenv.config();
@@ -28,6 +29,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.listen(port, () => {
     console.log(`Server is running on port: ${port}`);

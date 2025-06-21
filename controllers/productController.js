@@ -1,4 +1,4 @@
-﻿import { PutCommand, ScanCommand, GetCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb'; // Add ScanCommand and GetCommand
+﻿import { PutCommand, ScanCommand, GetCommand, UpdateCommand, DeleteCommand, QueryCommand }  from '@aws-sdk/lib-dynamodb'; // Add ScanCommand and GetCommand
 import { ddbDocClient } from '../config/db.js';
 import crypto from 'crypto';
 
@@ -57,66 +57,81 @@ export const createProduct = async (req, res) => {
 // @route   GET /api/products
 // @access  Public
 export const getProducts = async (req, res) => {
-    // Extract query parameters from the request URL
-    const { category, tag, sortBy, order = 'desc', limit = 10, lastKey } = req.query;
+    const {
+        category, tag, sortBy, order, minPrice, maxPrice
+    } = req.query;
+    const pageSize = parseInt(req.query.limit) || 10;
 
-    let params = {
+    // common params skeleton
+    const baseParams = {
         TableName: 'Products',
-        // Use the new GSI for efficient querying
-        IndexName: 'status-createdAt-index',
-        // Query for items where the status is 'published'
-        KeyConditionExpression: '#status = :status',
-        ExpressionAttributeNames: {
-            '#status': 'status',
-        },
-        ExpressionAttributeValues: {
-            ':status': 'published',
-        },
-        Limit: parseInt(limit),
-        // Sort in descending order (newest first) by default
-        ScanIndexForward: order === 'asc' ? true : false,
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: { ':status': 'published' }
     };
 
-    // --- Filtering Logic ---
-    let filterExpressions = [];
+    // choose index and key condition
+    if (sortBy === 'price') {
+        baseParams.IndexName = 'status-price-index';
+        baseParams.KeyConditionExpression = '#status = :status'
+            + ' AND #price BETWEEN :minPrice AND :maxPrice';
+        baseParams.ExpressionAttributeNames['#price'] = 'price';
+        baseParams.ExpressionAttributeValues[':minPrice'] = parseInt(minPrice || '0');
+        baseParams.ExpressionAttributeValues[':maxPrice'] = parseInt(maxPrice || '999999');
+        baseParams.ScanIndexForward = (order === 'asc');
+    } else {
+        baseParams.IndexName = 'status-createdAt-index';
+        baseParams.KeyConditionExpression = '#status = :status';
+        baseParams.ScanIndexForward = false;
+        // remaining price filter via FilterExpression
+        baseParams.ExpressionAttributeNames['#price'] = 'price';
+        baseParams.ExpressionAttributeValues[':minPrice'] = parseInt(minPrice || '0');
+        baseParams.ExpressionAttributeValues[':maxPrice'] = parseInt(maxPrice || '999999');
+        baseParams.FilterExpression = '#price BETWEEN :minPrice AND :maxPrice';
+    }
 
+    // category and tag filters
+    const filters = [];
     if (category) {
-        filterExpressions.push('#category = :category');
-        params.ExpressionAttributeNames['#category'] = 'category';
-        params.ExpressionAttributeValues[':category'] = category;
+        baseParams.ExpressionAttributeNames['#category'] = 'category';
+        baseParams.ExpressionAttributeValues[':category'] = category;
+        filters.push('#category = :category');
     }
-
     if (tag) {
-        filterExpressions.push('contains(#tags, :tag)');
-        params.ExpressionAttributeNames['#tags'] = 'tags';
-        params.ExpressionAttributeValues[':tag'] = tag;
+        const tags = Array.isArray(tag) ? tag : [tag];
+        baseParams.ExpressionAttributeNames['#tags'] = 'tags';
+        tags.forEach((t, i) => {
+            const key = `:tag${i}`;
+            baseParams.ExpressionAttributeValues[key] = t;
+            filters.push(`contains(#tags, ${key})`);
+        });
+    }
+    if (filters.length && sortBy === 'price') {
+        baseParams.FilterExpression = filters.join(' AND ');
+    } else if (filters.length && sortBy !== 'price') {
+        baseParams.FilterExpression += ' AND ' + filters.join(' AND ');
     }
 
-    if (filterExpressions.length > 0) {
-        params.FilterExpression = filterExpressions.join(' AND ');
-    }
-
-    // --- Pagination Logic ---
-    if (lastKey) {
-        // If lastKey is provided, decode it and use it to start the next page
-        params.ExclusiveStartKey = JSON.parse(Buffer.from(lastKey, 'base64').toString('utf8'));
-    }
+    // pagination loop
+    let items = [];
+    let ExclusiveStartKey = req.query.lastKey
+        ? JSON.parse(Buffer.from(req.query.lastKey, 'base64').toString())
+        : undefined;
 
     try {
-        // Use a QueryCommand now instead of Scan for efficiency
-        const { QueryCommand } = await import('@aws-sdk/lib-dynamodb');
-        const { Items, LastEvaluatedKey } = await ddbDocClient.send(new QueryCommand(params));
+        while (items.length < pageSize) {
+            const params = { ...baseParams, Limit: pageSize, ExclusiveStartKey };
+            const { Items, LastEvaluatedKey } = await ddbDocClient.send(new QueryCommand(params));
+            items = items.concat(Items);
+            if (!LastEvaluatedKey) break;
+            ExclusiveStartKey = LastEvaluatedKey;
+        }
 
-        // Encode the LastEvaluatedKey for the client to use in the next request
-        const nextKey = LastEvaluatedKey
-            ? Buffer.from(JSON.stringify(LastEvaluatedKey)).toString('base64')
+        const sliced = items.slice(0, pageSize);
+        const nextKey = ExclusiveStartKey
+            ? Buffer.from(JSON.stringify(ExclusiveStartKey)).toString('base64')
             : null;
 
-        res.json({
-            items: Items,
-            nextKey: nextKey // The key for the next page
-        });
-
+        res.json({ items: sliced, nextKey });
     } catch (err) {
         console.error("Error fetching products:", err);
         res.status(500).send('Server Error');

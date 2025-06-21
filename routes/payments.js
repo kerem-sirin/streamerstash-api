@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
-import { createPaymentIntent } from '../controllers/paymentController.js';
+import { createPaymentIntent, handleStripeWebhook  } from '../controllers/paymentController.js';
 
 const router = Router();
 
@@ -8,5 +8,10 @@ const router = Router();
 // @desc    Create a Stripe Payment Intent
 // @access  Private
 router.post('/create-intent', authMiddleware, createPaymentIntent);
+
+// @route   POST /api/payments/webhook
+// @desc    Stripe webhook handler
+// @access  Public
+router.post('/webhook', handleStripeWebhook);
 
 export default router;

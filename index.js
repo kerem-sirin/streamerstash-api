@@ -14,7 +14,15 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT;
 
-// Add middleware to parse JSON request bodies
+// IMPORTANT: We need to use express.raw for the webhook route BEFORE express.json()
+// This ensures we get the raw request body needed for Stripe's signature verification.
+// All other routes will still use express.json().
+app.use(
+    '/api/payments/webhook',
+    express.raw({ type: 'application/json' })
+);
+
+// This will now apply to all routes EXCEPT the webhook route defined above.
 app.use(express.json());
 
 // Define a simple root route to confirm the server is running

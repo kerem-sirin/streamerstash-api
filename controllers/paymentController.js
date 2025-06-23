@@ -2,7 +2,7 @@
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '../config/db.js';
 
-// @desc    Create a Stripe Payment Intent for an order
+// @desc    Create or retrieve a Stripe Payment Intent for an order
 // @route   POST /api/payments/create-intent
 // @access  Private
 export const createPaymentIntent = async (req, res) => {
@@ -16,6 +16,7 @@ export const createPaymentIntent = async (req, res) => {
     try {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+        // 1. Get the order from your database
         const orderParams = {
             TableName: 'Orders',
             Key: { id: orderId, userId: userId },
@@ -29,31 +30,44 @@ export const createPaymentIntent = async (req, res) => {
             return res.status(400).json({ msg: `Order has already been processed. Status: ${order.status}` });
         }
 
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount: order.totalAmount,
-            currency: 'gbp',
-            automatic_payment_methods: { enabled: true },
-            metadata: {
-                orderId: order.id,
-                userId: userId,
-            },
-        });
+        let paymentIntent;
 
-        const updateParams = {
-            TableName: 'Orders',
-            Key: { id: orderId, userId: userId },
-            UpdateExpression: 'SET #pi = :pi',
-            ExpressionAttributeNames: { '#pi': 'paymentIntentId' },
-            ExpressionAttributeValues: { ':pi': paymentIntent.id }
-        };
-        await ddbDocClient.send(new UpdateCommand(updateParams));
+        // 2. Check if a Payment Intent already exists for this order
+        if (order.paymentIntentId) {
+            // If it exists, retrieve it from Stripe
+            paymentIntent = await stripe.paymentIntents.retrieve(order.paymentIntentId);
+        } else {
+            // If not, create a new one
+            paymentIntent = await stripe.paymentIntents.create({
+                amount: order.totalAmount,
+                currency: 'gbp',
+                automatic_payment_methods: { enabled: true },
+                // CORRECTED: The return_url parameter is removed from this call
+                // as it's only needed when confirming the payment on the client side.
+                metadata: {
+                    orderId: order.id,
+                    userId: userId,
+                },
+            });
 
+            // Save the new paymentIntent.id to your order in DynamoDB
+            const updateParams = {
+                TableName: 'Orders',
+                Key: { id: orderId, userId: userId },
+                UpdateExpression: 'SET #pi = :pi',
+                ExpressionAttributeNames: { '#pi': 'paymentIntentId' },
+                ExpressionAttributeValues: { ':pi': paymentIntent.id }
+            };
+            await ddbDocClient.send(new UpdateCommand(updateParams));
+        }
+
+        // 3. Send the client secret for the existing or new Payment Intent
         res.send({
             clientSecret: paymentIntent.client_secret,
         });
 
     } catch (err) {
-        console.error("Error creating payment intent:", err);
+        console.error("Error creating/retrieving payment intent:", err);
         res.status(500).send('Server Error');
     }
 };
